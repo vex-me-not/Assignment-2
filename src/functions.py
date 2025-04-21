@@ -10,6 +10,7 @@ from sklearn.experimental import enable_iterative_imputer
 from sklearn.feature_selection import r_regression
 from sklearn.impute import IterativeImputer
 from sklearn.preprocessing import LabelEncoder
+from sklearn.decomposition import PCA
 from scipy import stats
 
 def clean_data(data:pd.DataFrame):
@@ -144,13 +145,58 @@ def keep_features(data_df: pd.DataFrame,target='diagnosis',to_drop=None):
 
 def corr_between_target(data_df: pd.DataFrame,target='diagnosis',thres=0.1):
     x,Y=keep_features(data_df=data_df,target=target,to_drop=['id'])
-    corr=pd.Series(1*r_regression(x,Y),index=x.columns)
+    corr=pd.Series(r_regression(x,Y),index=x.columns)
     selected=corr[corr.abs() >= thres].index.tolist()
-    print(f'Selected {len(selected)} out of {x.shape[1]}')
 
+    print("We could keep only the most correlated features:")
+    print(selected)
+
+    print(f'If we do, we will go from {x.shape[1]} features to {len(selected)} features,that will be the most correlated')
+
+    print("Returning the features that could be kept")
     viz_corr_between_target(corr=corr,target='diagnosis')
 
+
     return selected
+
+def corr_between_features(data_df: pd.DataFrame,target='diagnosis',to_drop=['diagnosis','id'],thres=0.8):
+    df=data_df
+
+    feats=df.drop(columns=to_drop).columns.to_list()
+
+    corr_matrix=df[feats].corr(method='pearson')
+
+    viz_corr_between_features(corr_matrix=corr_matrix)
+    
+    corr_pairs= corr_matrix.abs().where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool)).stack().sort_values(ascending=False)
+
+    high_pairs=corr_pairs[corr_pairs>=thres]
+    print('Pairs of high correlation')
+    print(high_pairs)
+
+    high_to_drop=set()
+
+    for high_pair in high_pairs.index:
+        high_to_drop.add(high_pair[1])
+    
+    print("We could remove these features:")
+    print(high_to_drop)
+
+    high_selected=df.drop(columns=high_to_drop)
+    print(f"If we do, we will go from {len(feats)} features to {len(high_selected.columns)} features")
+    print('Returning the features that could be ignored')
+
+    return high_to_drop
+
+
+
+
+def viz_corr_between_features(corr_matrix):
+    
+    plt.figure(figsize=(12, 10))
+    sns.heatmap(corr_matrix, cmap=sns.cubehelix_palette(as_cmap=True), center=0,linewidth=.5)
+    plt.title('Heatmap of Correlation between Features')
+    plt.show()
 
 def viz_corr_between_target(corr:pd.Series,target='diagnosis'):
     plt.figure(figsize=(10,6))
@@ -174,3 +220,4 @@ def boxpolt_distro(data_df: pd.DataFrame,to_drop=['diagnosis','id']):
         plt.tight_layout()
     plt.suptitle("Feature Distributions", fontsize=14, y=1.02)
     plt.show()
+
