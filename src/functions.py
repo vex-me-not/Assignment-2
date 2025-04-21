@@ -5,8 +5,11 @@ import joblib
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
 import seaborn as sns
+
 from sklearn.experimental import enable_iterative_imputer
+from sklearn.feature_selection import r_regression
 from sklearn.impute import IterativeImputer
+from sklearn.preprocessing import LabelEncoder
 from scipy import stats
 
 def clean_data(data:pd.DataFrame):
@@ -24,13 +27,12 @@ def clean_data(data:pd.DataFrame):
     print(f'{len(nan_columns)} columns have missing values. These columns are : {nan_columns}')
     print(f'In total we have {total_nan} missing values')
 
-    imp = IterativeImputer(random_state=42)
-    df[df_numeric.columns] = imp.fit_transform(df_numeric)
+    df=impute(data_df=df)
 
     nan_columns=df.columns[df.isna().any()].tolist()
     print(f'We now have {len(nan_columns)} columns with missing values. These columns are : {nan_columns}')
     
-    df['diagnosis']=df['diagnosis'].apply(encode)
+    df=encode(data_df=df,target='diagnosis')
 
     df=remove_duplicates(df)
     check_for_outliers(df)
@@ -43,20 +45,30 @@ def general_info(data_df: pd.DataFrame):
     print(f'Shape of dataset: {data_df.shape} ({data_df.shape[0]} entries and {data_df.shape[1]} columns)')
     print(f'Data type of the {data_df.shape[1]} columns\n {data_df.dtypes}')
 
-def encode(tumor):
+def impute(data_df: pd.DataFrame):
+    df=data_df
+
+    df_numeric = df.select_dtypes(include=[float, int])
+    
+    if 'id' in df_numeric.columns:
+        df_numeric=df_numeric.drop(columns=['id'])
+
+    imp = IterativeImputer(random_state=42)
+    df[df_numeric.columns] = imp.fit_transform(df_numeric)
+
+    return df
+
+def encode(data_df: pd.DataFrame,target='diagnosis'):
     """
     Method used to encode the entries of the column 'diagnosis'
     Malignant --> 1
     Benign --> 0
-    Other --> 2
     """
+    df=data_df
+    
+    df[target]=LabelEncoder().fit_transform(df[target]) # M->1, B->0
 
-    if tumor=="M":
-        return 0
-    elif tumor=="B":
-        return 1
-    else:
-        return 2
+    return df
     
 
 def remove_duplicates(data_df: pd.DataFrame):
@@ -103,11 +115,62 @@ def class_imbalance(data_df: pd.DataFrame,field='diagnosis'):
     df=data_df
     order=[0,1]
 
-    entries=data_df[field].value_counts()
+    entries=data_df[field].value_counts().reindex(order)
     print(f'Absolute frequencies of field "{field}"')
     print(entries)
 
     fractions=data_df[field].value_counts(normalize=True)
     print(f'Percentage of each class of field "{field}"')
     print(fractions)
+
+
+def get_Y(data_df: pd.DataFrame,target='diagnosis'):
+    if target not in data_df.columns:
+        raise ValueError("Please give a valid target!")
     
+    return data_df[target]
+
+def keep_features(data_df: pd.DataFrame,target='diagnosis',to_drop=None):
+    tdrp=[]
+    
+    if to_drop is not None:
+        tdrp = [col for col in to_drop if col in data_df.columns]
+    
+    tdrp.append(target)
+    Y=get_Y(data_df=data_df,target=target)
+    x=data_df.drop(tdrp,axis=1)
+
+    return x,Y
+
+def corr_between_target(data_df: pd.DataFrame,target='diagnosis',thres=0.1):
+    x,Y=keep_features(data_df=data_df,target=target,to_drop=['id'])
+    corr=pd.Series(1*r_regression(x,Y),index=x.columns)
+    selected=corr[corr.abs() >= thres].index.tolist()
+    print(f'Selected {len(selected)} out of {x.shape[1]}')
+
+    viz_corr_between_target(corr=corr,target='diagnosis')
+
+    return selected
+
+def viz_corr_between_target(corr:pd.Series,target='diagnosis'):
+    plt.figure(figsize=(10,6))
+    corr.sort_values().plot(kind='barh',color='salmon')
+    plt.title(f"Feature Correlations with {target}")
+    plt.xlabel("Pearson's Correlation Coefficient")
+    plt.ylabel("Feature")
+    plt.axvline(0, color='black', linestyle='--')
+    plt.show()
+
+def boxpolt_distro(data_df: pd.DataFrame,to_drop=['diagnosis','id']):
+    df=data_df
+
+    feats=df.drop(columns=to_drop).columns.to_list()
+
+    plt.figure(figsize=(12,30))
+
+    for i,feat in enumerate(feats,1):
+        plt.subplot(10, 3, i)
+        sns.boxplot(x=df[feat], color='salmon',flierprops={"marker":"x"})
+        plt.tight_layout()
+    plt.suptitle("Feature Distributions", fontsize=14, y=1.02)
+    plt.show()
