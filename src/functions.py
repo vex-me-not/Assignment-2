@@ -7,10 +7,12 @@ import statsmodels.api as sm
 import seaborn as sns
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
+from scipy import stats
 
 def clean_data(data:pd.DataFrame):
     df=data
 
+    general_info(df)
     nan_columns=df.columns[df.isna().any()].tolist()
     total_nan=(df.isna().sum()).sum()
 
@@ -30,9 +32,16 @@ def clean_data(data:pd.DataFrame):
     
     df['diagnosis']=df['diagnosis'].apply(encode)
 
+    df=remove_duplicates(df)
+    check_for_outliers(df)
+    print("We WON'T remove the outliers.")
 
     return df
 
+
+def general_info(data_df: pd.DataFrame):
+    print(f'Shape of dataset: {data_df.shape} ({data_df.shape[0]} entries and {data_df.shape[1]} columns)')
+    print(f'Data type of the {data_df.shape[1]} columns\n {data_df.dtypes}')
 
 def encode(tumor):
     """
@@ -48,3 +57,57 @@ def encode(tumor):
         return 1
     else:
         return 2
+    
+
+def remove_duplicates(data_df: pd.DataFrame):
+    """
+    We use this function to find and remove any potential duplicates
+    """
+    
+    df=data_df
+   
+    shape_before=df.shape
+    df.drop_duplicates()
+    shape_after=df.shape
+
+    if (shape_before[0] != shape_after[0]):
+        print("Before removal of duplicates",shape_before)
+        print("After removal of duplicates",shape_after)
+    else:
+        print("No duplicates in the set")
+    
+    return df
+
+def check_for_outliers(data_df: pd.DataFrame):
+
+    df=data_df
+   
+    shape_before=df.shape
+    
+    no_outliers=df[(np.abs(stats.zscore(df)) < 3).all(axis=1)]
+
+    shape_after=no_outliers.shape
+
+    if (shape_before[0] != shape_after[0]):
+        removed=shape_before[0]-shape_after[0]
+        print("Before removal of outliers",shape_before)
+        class_imbalance(df)
+        print("After removal of outliers",shape_after)
+        class_imbalance(no_outliers)
+        print(f"We could remove {removed} entries ({(removed/shape_before[0])*100:.2f}% of total entries)")
+
+    else:
+        print("No outliers in the set")
+    
+def class_imbalance(data_df: pd.DataFrame,field='diagnosis'):
+    df=data_df
+    order=[0,1]
+
+    entries=data_df[field].value_counts()
+    print(f'Absolute frequencies of field "{field}"')
+    print(entries)
+
+    fractions=data_df[field].value_counts(normalize=True)
+    print(f'Percentage of each class of field "{field}"')
+    print(fractions)
+    
