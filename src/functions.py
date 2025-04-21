@@ -227,16 +227,21 @@ def perform_pca(data_df: pd.DataFrame):
 
     data_rescaled=scale_data(x)
 
-    pca = PCA(n_components = 0.99)
+    fraction=0.95
+
+    pca = PCA(n_components = fraction)
     pca.fit(data_rescaled)
     reduced = pca.transform(data_rescaled)
 
-    print(f"99% of the variance can be explained by {pca.n_components_} features")
-    print("The explained variance ratio is: ",pca.explained_variance_ratio_)
+    print(f"{fraction*100}% of the variance can be explained by {pca.n_components_} components")
+    print("The explained variance ratio is: ",(pca.explained_variance_ratio_))
 
     viz_pca(reduced,Y)
 
-    return pca
+    pca_df=pd.DataFrame(data=reduced)
+    pca_df['diagnosis']=Y.values
+    
+    return pca_df
 
 def scale_data(data):
     pipeline = Pipeline([
