@@ -9,7 +9,8 @@ import seaborn as sns
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.feature_selection import r_regression
 from sklearn.impute import IterativeImputer
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder,RobustScaler,PowerTransformer,MinMaxScaler
+from sklearn.pipeline import Pipeline
 from sklearn.decomposition import PCA
 from scipy import stats
 
@@ -221,3 +222,37 @@ def boxpolt_distro(data_df: pd.DataFrame,to_drop=['diagnosis','id']):
     plt.suptitle("Feature Distributions", fontsize=14, y=1.02)
     plt.show()
 
+def perform_pca(data_df: pd.DataFrame):
+    x,Y=keep_features(data_df=data_df,target='diagnosis',to_drop=['id'])
+
+    data_rescaled=scale_data(x)
+
+    pca = PCA(n_components = 0.99)
+    pca.fit(data_rescaled)
+    reduced = pca.transform(data_rescaled)
+
+    print(f"99% of the variance can be explained by {pca.n_components_} features")
+    print("The explained variance ratio is: ",pca.explained_variance_ratio_)
+
+    viz_pca(reduced,Y)
+
+    return pca
+
+def scale_data(data):
+    pipeline = Pipeline([
+    ('scaler', RobustScaler()),  
+    ('transformer', PowerTransformer(method='yeo-johnson'))
+    ])
+    data_rescaled = pipeline.fit_transform(data)
+
+    return data_rescaled
+
+def viz_pca(x,y):
+    plt.figure(figsize=(10, 8))
+    scat = plt.scatter(x[:, 0], x[:, 1], c=y.values, cmap='flare', alpha=0.7)
+
+    plt.legend(*scat.legend_elements(), title="Labels")
+    plt.title("Principal Component Analysis")
+    plt.xlabel("Principal Component 1")
+    plt.ylabel("Principal Component 2")
+    plt.show()
