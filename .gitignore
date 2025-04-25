@@ -21,4 +21,5 @@
 !*.txt
 !*.py 
 !*.pkl
+!*.png
 # Add anything that you should be included but it's not
