@@ -14,6 +14,13 @@ from sklearn.pipeline import Pipeline
 from sklearn.decomposition import PCA
 from scipy import stats
 
+class rnCV():
+    def __init(self,r=10,n=5,k=3):
+        self.R=r
+        self.N=n
+        self.K=k
+
+
 def clean_data(data:pd.DataFrame):
     df=data
 
