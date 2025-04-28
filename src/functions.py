@@ -7,16 +7,26 @@ import statsmodels.api as sm
 import seaborn as sns
 import optuna
 import lightgbm as lgb
+import warnings
 
+from optuna.pruners import MedianPruner
+from sklearn.linear_model import LogisticRegression
+from sklearn.naive_bayes import GaussianNB
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.svm import SVC
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.feature_selection import r_regression
 from sklearn.impute import IterativeImputer
-from sklearn.preprocessing import LabelEncoder,RobustScaler,PowerTransformer,MinMaxScaler
+from sklearn.preprocessing import LabelEncoder,RobustScaler,PowerTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.decomposition import PCA
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import matthews_corrcoef, roc_auc_score, balanced_accuracy_score,f1_score, precision_score, recall_score, confusion_matrix, average_precision_score
 from scipy import stats
+
+
+warnings.filterwarnings('ignore')
 
 class rnCV():
     def __init__(self,data_df,estimators,params,r=10,n=5,k=3,random_state=42):
@@ -55,9 +65,9 @@ class rnCV():
             df = pd.DataFrame(all_metrics)
             summary[model_name] = df.median().to_dict()
     
-        summary=pd.DataFrame(summary).T
+        summary_t=pd.DataFrame(summary).T
         
-        return summary
+        return summary_t
 
     def _tune_model(self,x_train,y_train,model_name):
         # per optuna's documentation
@@ -69,18 +79,27 @@ class rnCV():
             strat_kfold=StratifiedKFold(n_splits=self.K, shuffle=True, random_state=self.random_state)
             scores = []
 
-            for k_train_idx, k_val_idx in strat_kfold.split(x_train, y_train):
+            for fold_idx, (k_train_idx, k_val_idx) in enumerate(strat_kfold.split(x_train, y_train)):
                 x_k_train, x_val = x_train.iloc[k_train_idx], x_train.iloc[k_val_idx]
                 y_k_train, y_val = y_train.iloc[k_train_idx], y_train.iloc[k_val_idx]
                 
                 model.fit(x_k_train, y_k_train)
                 preds = model.predict(x_val)
-                scores.append(balanced_accuracy_score(y_val, preds))
+                score=balanced_accuracy_score(y_val, preds)
+                scores.append(score)
+
+                # report intermediate result for pruning
+                trial.report(score, step=fold_idx)
+                
+                # ask if the trial should be pruned
+                if trial.should_prune():
+                    raise optuna.TrialPruned()
 
             return np.mean(scores)        
         
-        study = optuna.create_study(direction='maximize')
-        study.optimize(objective, n_trials=100)
+
+        study = optuna.create_study(direction='maximize',study_name=model_name)
+        study.optimize(objective, n_trials=100,timeout=180.0)
         
         return study.best_params        
 
@@ -114,6 +133,57 @@ class rnCV():
 
     
     # Save model goes here ?????????
+
+
+def perform_rnCV(path):
+    df=pd.read_csv(path)
+    # Define estimators
+    estimators = {
+        'LogisticRegression': LogisticRegression,
+        'GaussianNB': GaussianNB,
+        'LDA': LinearDiscriminantAnalysis,
+        'SVM': SVC,
+        'RandomForest': RandomForestClassifier,
+        'LightGBM': lgb.LGBMClassifier
+    }
+
+    # Define hyperparameter spaces
+    param_spaces = {
+        'LogisticRegression': lambda trial: {
+            'penalty': trial.suggest_categorical('penalty', ['l1', 'l2', 'elasticnet']),
+            'solver': trial.suggest_categorical('solver', ['saga']),
+            'C': trial.suggest_loguniform('C', 1e-3, 1e2),
+            'l1_ratio': trial.suggest_uniform('l1_ratio', 0, 1)
+        },
+        'GaussianNB': lambda trial: {'var_smoothing': trial.suggest_loguniform('var_smoothing',1e-9,1e-5)},
+        'LDA': lambda trial: {'solver':trial.suggest_categorical('solver', ['svd', 'lsqr', 'eigen']),
+                              'tol':trial.suggest_loguniform('tol', 1e-4, 1e-1)},
+        'SVM': lambda trial: {
+            'C': trial.suggest_loguniform('C', 1e-3, 1e0),
+            'kernel': trial.suggest_categorical('kernel', ['linear', 'rbf', 'poly']),
+            'probability': trial.suggest_categorical('probability', [True])
+        },
+        'RandomForest': lambda trial: {
+            'n_estimators': trial.suggest_int('n_estimators', 100, 500),
+            'max_depth': trial.suggest_int('max_depth', 3, 15),
+            'min_samples_split': trial.suggest_int('min_samples_split', 2, 10)
+        },
+        'LightGBM': lambda trial: {
+            'n_estimators': trial.suggest_int('n_estimators', 100, 500),
+            'max_depth': trial.suggest_int('max_depth', 3, 15),
+            'learning_rate': trial.suggest_loguniform('learning_rate', 1e-3, 1e-1)
+        }
+    }
+
+    # Initialize and run rnCV
+    rncv = rnCV(data_df=df, estimators=estimators,params=param_spaces, r=10, n=5, k=3, random_state=42)
+    results = rncv.run_rnCV()
+
+    # Summarize and save the results
+    summary = rncv.results_summary()
+    summary.to_csv('rncv_summary_results.csv')
+
+    print("Summary:\n", summary)
 
 def clean_data(data:pd.DataFrame):
     df=data
@@ -218,11 +288,11 @@ def class_imbalance(data_df: pd.DataFrame,field='diagnosis'):
     df=data_df
     order=[0,1]
 
-    entries=data_df[field].value_counts().reindex(order)
+    entries=df[field].value_counts().reindex(order)
     print(f'Absolute frequencies of field "{field}"')
     print(entries)
 
-    fractions=data_df[field].value_counts(normalize=True)
+    fractions=df[field].value_counts(normalize=True)
     print(f'Percentage of each class of field "{field}"')
     print(fractions)
 
