@@ -5,6 +5,8 @@ import joblib
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
 import seaborn as sns
+import optuna
+import lightgbm as lgb
 
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.feature_selection import r_regression
@@ -12,18 +14,106 @@ from sklearn.impute import IterativeImputer
 from sklearn.preprocessing import LabelEncoder,RobustScaler,PowerTransformer,MinMaxScaler
 from sklearn.pipeline import Pipeline
 from sklearn.decomposition import PCA
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import matthews_corrcoef, roc_auc_score, balanced_accuracy_score,f1_score, precision_score, recall_score, confusion_matrix, average_precision_score
 from scipy import stats
 
 class rnCV():
-    def __init(self,data_df,estimators,params,r=10,n=5,k=3):
+    def __init__(self,data_df,estimators,params,r=10,n=5,k=3,random_state=42):
         self.R=r
         self.N=n
         self.K=k
-        self.df=data_df
+        self.x, self.y=keep_features(data_df=data_df,target='diagnosis',to_drop=['id'])
         self.estimators=estimators
         self.params=params
-        
+        self.random_state=random_state
+        self.results={estim:[] for estim in estimators.keys()}
 
+    def _compute_metrics(self,y_true,y_pred,y_prob):
+        tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+        specificity = tn / (tn + fp)
+        npv = tn / (tn + fn)
+
+        metrics={
+            'MCC': matthews_corrcoef(y_true, y_pred),
+            'ROC_AUC': roc_auc_score(y_true, y_prob),
+            'Balanced_Accuracy': balanced_accuracy_score(y_true, y_pred),
+            'F1': f1_score(y_true, y_pred),
+            'Recall': recall_score(y_true, y_pred),
+            'Precision': precision_score(y_true, y_pred),
+            'Specificity': specificity,
+            'NPV': npv,
+            'PR_AUC': average_precision_score(y_true, y_prob)
+        }
+
+        return metrics
+    
+    def results_summary(self):
+        summary = {}
+        
+        for model_name, all_metrics in self.results.items():
+            df = pd.DataFrame(all_metrics)
+            summary[model_name] = df.median().to_dict()
+    
+        summary=pd.DataFrame(summary).T
+        
+        return summary
+
+    def _tune_model(self,x_train,y_train,model_name):
+        # per optuna's documentation
+        def objective(trial):
+            estimator=self.estimators[model_name]
+            params=self.params[model_name](trial)
+            model=estimator(**params)
+
+            strat_kfold=StratifiedKFold(n_splits=self.K, shuffle=True, random_state=self.random_state)
+            scores = []
+
+            for k_train_idx, k_val_idx in strat_kfold.split(x_train, y_train):
+                x_k_train, x_val = x_train.iloc[k_train_idx], x_train.iloc[k_val_idx]
+                y_k_train, y_val = y_train.iloc[k_train_idx], y_train.iloc[k_val_idx]
+                
+                model.fit(x_k_train, y_k_train)
+                preds = model.predict(x_val)
+                scores.append(balanced_accuracy_score(y_val, preds))
+
+            return np.mean(scores)        
+        
+        study = optuna.create_study(direction='maximize')
+        study.optimize(objective, n_trials=100)
+        
+        return study.best_params        
+
+    def run_rnCV(self):
+        np.random.seed(self.random_state)
+        
+        for r in range(self.R):
+            print(f"------ Repetition {r+1}/{self.R} ------\n")
+
+            state=self.random_state + r
+            strat_kfold=StratifiedKFold(n_splits=self.N, shuffle=True, random_state=state)
+
+            for model_name in self.estimators.keys():
+                for n_train_idx, n_test_idx in strat_kfold.split(self.x, self.y):
+                    x_n_train, x_n_test = self.x.iloc[n_train_idx], self.x.iloc[n_test_idx]
+                    y_n_train, y_n_test = self.y.iloc[n_train_idx], self.y.iloc[n_test_idx]
+
+                    best_params = self._tune_model(x_train=x_n_train,y_train= y_n_train,model_name=model_name)
+
+                    model = self.estimators[model_name](**best_params)
+                    model.fit(x_n_train, y_n_train)
+
+                    preds = model.predict(x_n_test)
+                    pred_probs = model.predict_proba(x_n_test)[:, 1]
+
+                    metrics = self._compute_metrics(y_true=y_n_test,y_pred=preds,y_prob=pred_probs)
+                    self.results[model_name].append(metrics)
+
+        return self.results
+
+
+    
+    # Save model goes here ?????????
 
 def clean_data(data:pd.DataFrame):
     df=data
