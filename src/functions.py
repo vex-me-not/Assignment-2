@@ -33,7 +33,8 @@ class rnCV():
         self.R=r
         self.N=n
         self.K=k
-        self.x, self.y=keep_features(data_df=data_df,target='diagnosis',to_drop=['id'])
+        self.x, self.y=keep_features(data_df=data_df,target='diagnosis',to_drop=None)
+        self.y= encode(self.y)
         self.estimators=estimators
         self.params=params
         self.random_state=random_state
@@ -83,6 +84,12 @@ class rnCV():
                 x_k_train, x_val = x_train.iloc[k_train_idx], x_train.iloc[k_val_idx]
                 y_k_train, y_val = y_train.iloc[k_train_idx], y_train.iloc[k_val_idx]
                 
+                x_k_train=impute(x_k_train)
+                x_k_train=scale_data(x_k_train)
+                
+                x_val=impute(x_val)
+                x_val=scale_data(x_val)
+
                 model.fit(x_k_train, y_k_train)
                 preds = model.predict(x_val)
                 score=balanced_accuracy_score(y_val, preds)
@@ -99,7 +106,7 @@ class rnCV():
         
 
         study = optuna.create_study(direction='maximize',study_name=model_name)
-        study.optimize(objective, n_trials=100,timeout=180.0)
+        study.optimize(objective, n_trials=60,timeout=180.0)
         
         return study.best_params        
 
@@ -117,9 +124,17 @@ class rnCV():
                     x_n_train, x_n_test = self.x.iloc[n_train_idx], self.x.iloc[n_test_idx]
                     y_n_train, y_n_test = self.y.iloc[n_train_idx], self.y.iloc[n_test_idx]
 
+
                     best_params = self._tune_model(x_train=x_n_train,y_train= y_n_train,model_name=model_name)
 
                     model = self.estimators[model_name](**best_params)
+
+                    x_n_train=impute(x_n_train)
+                    x_n_train=scale_data(x_n_train)
+                    
+                    x_n_test=impute(x_n_test)
+                    x_n_test=scale_data(x_n_test)
+                    
                     model.fit(x_n_train, y_n_train)
 
                     preds = model.predict(x_n_test)
@@ -152,26 +167,27 @@ def perform_rnCV(path):
         'LogisticRegression': lambda trial: {
             'penalty': trial.suggest_categorical('penalty', ['l1', 'l2', 'elasticnet']),
             'solver': trial.suggest_categorical('solver', ['saga']),
-            'C': trial.suggest_loguniform('C', 1e-3, 1e2),
+            'C': trial.suggest_float('C', 1e-3, 1e2,log=True),
             'l1_ratio': trial.suggest_uniform('l1_ratio', 0, 1)
         },
-        'GaussianNB': lambda trial: {'var_smoothing': trial.suggest_loguniform('var_smoothing',1e-9,1e-5)},
+        'GaussianNB': lambda trial: {'var_smoothing': trial.suggest_float('var_smoothing',1e-12,1e-1,log=True)},
         'LDA': lambda trial: {'solver':trial.suggest_categorical('solver', ['svd', 'lsqr', 'eigen']),
-                              'tol':trial.suggest_loguniform('tol', 1e-4, 1e-1)},
+                              'tol':trial.suggest_float('tol', 1e-4, 1e-1,log=True)},
         'SVM': lambda trial: {
-            'C': trial.suggest_loguniform('C', 1e-1, 1e1),
+            'C': trial.suggest_float('C', 1e-1, 1e1,log=True),
             'kernel': trial.suggest_categorical('kernel', ['linear', 'rbf', 'poly']),
             'probability': trial.suggest_categorical('probability', [True])
         },
         'RandomForest': lambda trial: {
             'n_estimators': trial.suggest_int('n_estimators', 100, 500),
-            'max_depth': trial.suggest_int('max_depth', 3, 15),
+            'max_depth': trial.suggest_int('max_depth', 5, 15),
             'min_samples_split': trial.suggest_int('min_samples_split', 2, 10)
         },
         'LightGBM': lambda trial: {
             'n_estimators': trial.suggest_int('n_estimators', 100, 500),
-            'max_depth': trial.suggest_int('max_depth', 3, 15),
-            'learning_rate': trial.suggest_loguniform('learning_rate', 1e-3, 1e-1)
+            'max_depth': trial.suggest_int('max_depth', 5, 15),
+            'learning_rate': trial.suggest_float('learning_rate', 1e-3, 1e-1,log=True),
+            'verbosity': trial.suggest_categorical('verbosity', [-1])
         }
     }
 
@@ -301,7 +317,7 @@ def get_Y(data_df: pd.DataFrame,target='diagnosis'):
     if target not in data_df.columns:
         raise ValueError("Please give a valid target!")
     
-    return data_df[target]
+    return pd.DataFrame(data_df[target])
 
 def keep_features(data_df: pd.DataFrame,target='diagnosis',to_drop=None):
     tdrp=[]
