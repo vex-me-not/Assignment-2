@@ -28,6 +28,26 @@ from scipy import stats
 
 warnings.filterwarnings('ignore')
 
+class EarlyStopping:
+    def __init__(self, patience):
+        self.patience = patience
+        self.best = None
+        self.no_impr_count = 0
+
+    def __call__(self, study: optuna.Study, trial: optuna.Trial):
+        if (self.best is None) or (study.best_value > self.best):
+            self.best = study.best_value
+            self.no_impr_count = 0
+        else:
+            self.no_impr_count += 1
+
+        if (self.no_impr_count >= self.patience):
+            print(f"EARLY STOPPING: No improvement after {self.patience} trials!")
+            study.stop()
+            print(f"--> Best trial is {study.best_trial.number} with value: {study.best_trial.value} and parameters: {study.best_trial.params}\n")
+
+
+
 class rnCV():
     def __init__(self,data_df,estimators,params,r=10,n=5,k=3,random_state=42):
         self.R=r
@@ -106,7 +126,7 @@ class rnCV():
         
 
         study = optuna.create_study(direction='maximize',study_name=model_name)
-        study.optimize(objective, n_trials=60,timeout=180.0)
+        study.optimize(objective, n_trials=60,timeout=180.0,callbacks=[EarlyStopping(patience=10)])
         
         return study.best_params        
 
@@ -167,14 +187,14 @@ def perform_rnCV(path):
         'LogisticRegression': lambda trial: {
             'penalty': trial.suggest_categorical('penalty', ['l1', 'l2', 'elasticnet']),
             'solver': trial.suggest_categorical('solver', ['saga']),
-            'C': trial.suggest_float('C', 1e-3, 1e2,log=True),
+            'C': trial.suggest_float('C', 1e-3, 1e0, log=True),
             'l1_ratio': trial.suggest_uniform('l1_ratio', 0, 1)
         },
-        'GaussianNB': lambda trial: {'var_smoothing': trial.suggest_float('var_smoothing',1e-12,1e-1,log=True)},
+        'GaussianNB': lambda trial: {'var_smoothing': trial.suggest_float('var_smoothing', 1e-2, 1e-1, log=True)},
         'LDA': lambda trial: {'solver':trial.suggest_categorical('solver', ['svd', 'lsqr', 'eigen']),
-                              'tol':trial.suggest_float('tol', 1e-4, 1e-1,log=True)},
+                              'tol':trial.suggest_float('tol', 5*1e-2, 1e-1, log=True)},
         'SVM': lambda trial: {
-            'C': trial.suggest_float('C', 1e-1, 1e1,log=True),
+            'C': trial.suggest_float('C', 5*1e-2, 1e2, log=True),
             'kernel': trial.suggest_categorical('kernel', ['linear', 'rbf', 'poly']),
             'probability': trial.suggest_categorical('probability', [True])
         },
@@ -186,7 +206,7 @@ def perform_rnCV(path):
         'LightGBM': lambda trial: {
             'n_estimators': trial.suggest_int('n_estimators', 100, 500),
             'max_depth': trial.suggest_int('max_depth', 5, 15),
-            'learning_rate': trial.suggest_float('learning_rate', 1e-3, 1e-1,log=True),
+            'learning_rate': trial.suggest_float('learning_rate', 1e-3, 1e-1, log=True),
             'verbosity': trial.suggest_categorical('verbosity', [-1])
         }
     }
@@ -197,7 +217,7 @@ def perform_rnCV(path):
 
     # Summarize and save the results
     summary = rncv.results_summary()
-    summary.to_csv('rncv_summary_results.csv')
+    # summary.to_csv('../data/rncv_summary_results.csv')
 
     print("Summary:\n", summary)
 
