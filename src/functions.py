@@ -159,7 +159,7 @@ def perform_rnCV(path):
         'LDA': lambda trial: {'solver':trial.suggest_categorical('solver', ['svd', 'lsqr', 'eigen']),
                               'tol':trial.suggest_loguniform('tol', 1e-4, 1e-1)},
         'SVM': lambda trial: {
-            'C': trial.suggest_loguniform('C', 1e-3, 1e0),
+            'C': trial.suggest_loguniform('C', 1e-1, 1e1),
             'kernel': trial.suggest_categorical('kernel', ['linear', 'rbf', 'poly']),
             'probability': trial.suggest_categorical('probability', [True])
         },
