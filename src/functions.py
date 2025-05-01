@@ -217,7 +217,7 @@ def perform_rnCV(path):
 
     # Summarize and save the results
     summary = rncv.results_summary()
-    # summary.to_csv('../data/rncv_summary_results.csv')
+    summary.to_csv('../data/rncv_summary_results.csv')
 
     print("Summary:\n", summary)
 
