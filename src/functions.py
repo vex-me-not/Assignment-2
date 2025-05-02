@@ -468,3 +468,47 @@ def viz_pca(x,y):
     plt.xlabel("Principal Component 1")
     plt.ylabel("Principal Component 2")
     plt.show()
+
+def count_apps(item,item_list:list):
+    count=0
+    for it in item_list:
+        if (it==item):
+            count += 1
+    return count
+
+def count_wins(summary:pd.DataFrame):
+    total_models=summary.shape[0]
+
+    dict_app={}
+    for model_num in range(total_models):
+        dict_app[model_num]=count_apps(model_num,summary.idxmax())
+    
+    return dict_app
+
+def winner_dict(summary:pd.DataFrame):
+    
+    model_names=summary['Model']
+    sum_no_name=summary.drop(columns='Model')
+
+    win_dict=count_wins(summary=sum_no_name)
+
+    for i in range(len(model_names)):
+        win_dict[model_names[i]]=win_dict.pop(i)
+
+    return win_dict
+
+def get_winner(summary:pd.DataFrame):
+    win_dict=winner_dict(summary=summary)
+
+    sorted_win_dict=dict(sorted(win_dict.items(), key=lambda item: item[1],reverse=True))
+    winner=list(sorted_win_dict.keys())[0]
+
+    return winner
+
+def replace_column(df:pd.DataFrame,to_be_replaced,to_be_added):
+    data_df=df
+    
+    if to_be_replaced in data_df.columns and (to_be_added not in data_df.columns):
+        data_df.rename(columns={to_be_replaced:to_be_added},inplace=True)
+    
+    return data_df
