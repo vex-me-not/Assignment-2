@@ -503,7 +503,7 @@ def get_winner(summary:pd.DataFrame):
     sorted_win_dict=dict(sorted(win_dict.items(), key=lambda item: item[1],reverse=True))
     winner=list(sorted_win_dict.keys())[0]
 
-    return winner
+    return (winner,sorted_win_dict[winner])
 
 def replace_column(df:pd.DataFrame,to_be_replaced,to_be_added):
     data_df=df
