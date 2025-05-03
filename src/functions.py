@@ -194,9 +194,50 @@ class rnCV():
 
         return self.results
 
+    def tune_winner(self,winner):
 
-    
-    # Save model goes here ?????????
+        # per optuna's documentation
+        def objective(trial):
+            estimator=self.estimators[winner]
+            params=self.params[winner](trial)
+            model=estimator(**params)
+
+            strat_kfold=StratifiedKFold(n_splits=5, shuffle=True, random_state=self.random_state)
+            scores = []
+
+            x_tune=self.x
+            y_tune=self.y
+            
+            for fold_idx, (tune_train_idx, tune_val_idx) in enumerate(strat_kfold.split(x_tune, y_tune)):
+                x_tune_train, x_tune_val = x_tune.iloc[tune_train_idx], x_tune.iloc[tune_val_idx]
+                y_tune_train, y_tune_val = y_tune.iloc[tune_train_idx], y_tune.iloc[tune_val_idx]
+                    
+                x_tune_train=impute(x_tune_train)
+                x_tune_train=scale_data(x_tune_train)
+                    
+                x_tune_val=impute(x_tune_val)
+                x_tune_val=scale_data(x_tune_val)
+
+                model.fit(x_tune_train, y_tune_train)
+                preds = model.predict(x_tune_val)
+                score=balanced_accuracy_score(y_tune_val, preds)
+                scores.append(score)
+
+                # report intermediate result for pruning
+                trial.report(score, step=fold_idx)
+                    
+                # ask if the trial should be pruned
+                if trial.should_prune():
+                    raise optuna.TrialPruned()
+
+            return np.mean(scores)        
+            
+
+        study = optuna.create_study(direction='maximize',study_name="Winner:"+winner)
+        study.optimize(objective, n_trials=60,timeout=180.0,callbacks=[EarlyStopping(patience=10)])
+            
+        return study.best_params
+
 
 
 def perform_rnCV(path):
@@ -540,9 +581,11 @@ def replace_column(df:pd.DataFrame,to_be_replaced,to_be_added):
     if to_be_replaced in data_df.columns and (to_be_added not in data_df.columns):
         data_df.rename(columns={to_be_replaced:to_be_added},inplace=True)
     
-    return data_df
+    return data_df  
 
-def tune_winner(winner):
+
+def winner_tuning(df:pd.DataFrame,winner):
+    # Define estimators
     estimators = {
         'LogisticRegression': LogisticRegression,
         'GaussianNB': GaussianNB,
@@ -552,6 +595,7 @@ def tune_winner(winner):
         'LightGBM': lgb.LGBMClassifier
     }
 
+    # Define hyperparameter spaces
     param_spaces = {
         'LogisticRegression': lambda trial: {
             'penalty': trial.suggest_categorical('penalty', ['l1', 'l2', 'elasticnet']),
@@ -580,7 +624,10 @@ def tune_winner(winner):
         }
     }
 
+    rncv = rnCV(data_df=df, estimators=estimators,params=param_spaces, r=10, n=5, k=3, random_state=42)
     winner_estim=estimators[winner]
-    winner_param=param_spaces[winner]
+    winner_params=rncv.tune_winner(winner=winner)
 
-    pass
+    print(f'For model {winner} the best parameters are {winner_params}')
+
+    return winner_estim(**winner_params)
