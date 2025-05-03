@@ -631,3 +631,73 @@ def winner_tuning(df:pd.DataFrame,winner):
     print(f'For model {winner} the best parameters are {winner_params}')
 
     return winner_estim(**winner_params)
+
+
+def metric_ci(y_true, y_pred, metric, is_proba=False, proba=None, n_samples=5000, seed=42):
+    
+    rng = np.random.RandomState(seed)
+    stats = []
+    
+    for sample in range(n_samples):
+        
+        idx = rng.choice(len(y_true), len(y_true), replace=True)
+        
+        y_sample = y_true[idx] if isinstance(y_true, np.ndarray) else y_true.iloc[idx]
+        pred_sample = proba[idx] if is_proba else y_pred[idx]
+        
+        stats.append(metric(y_sample, pred_sample))
+    
+    return np.percentile(stats, [2.5, 97.5])
+
+
+def bootstrap_model(df_dev:pd.DataFrame,df_val:pd.DataFrame, model):
+    metrics = {
+        'Balanced Accuracy': (balanced_accuracy_score, False),
+        'F1 Score': (f1_score, False),
+        'Precision': (precision_score, False),
+        'Recall': (recall_score, False),
+        'MCC': (matthews_corrcoef, False),
+        'ROC AUC': (roc_auc_score, True),
+        'PR AUC': (average_precision_score, True)
+    }
+
+
+    x_dev, y_dev=keep_features(data_df=df_dev,target='diagnosis',to_drop=None)
+    y_dev = encode(y_dev)
+
+
+    x_dev=impute(x_dev)
+    x_dev=scale_data(x_dev)
+    
+    x_val, y_val=keep_features(data_df=df_val,target='diagnosis',to_drop=None)
+    y_val = encode(y_val)
+
+    x_val=impute(x_val)
+    x_val=scale_data(x_val)
+
+    model.fit(x_dev,y_dev)
+
+    # predict on evaluation set
+    y_pred = model.predict(x_val)
+    y_proba = model.predict_proba(x_val)[:, 1]
+
+
+    print("Bootstrapped 95% CIs (Model trained on dev, tested on val):")
+    for name, (fn, is_proba) in metrics.items():
+        ci = metric_ci(
+            y_val,
+            y_pred if not is_proba else y_proba,
+            fn,
+            is_proba=is_proba,
+            proba=y_proba if is_proba else None
+        )
+        print(f"{name:15s}: [{ci[0]:.4f}, {ci[1]:.4f}]")
+
+    # specificity and NPV as point estimates (not bootstrapped here)
+    tn, fp, fn_, tp = confusion_matrix(y_val, y_pred).ravel()
+    
+    specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+    npv = tn / (tn + fn_) if (tn + fn_) > 0 else 0
+    
+    print(f"Specificity         : {specificity:.4f}")
+    print(f"NPV                 : {npv:.4f}")
