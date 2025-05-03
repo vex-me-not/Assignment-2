@@ -9,6 +9,7 @@ import optuna
 import lightgbm as lgb
 import warnings
 
+from pathlib import Path
 from optuna.pruners import MedianPruner
 from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import GaussianNB
@@ -27,6 +28,34 @@ from scipy import stats
 
 
 warnings.filterwarnings('ignore')
+
+class IO:
+    """
+    This class implements the saving and the loading of the models. It needs a models directory in the constructor to work
+    So, each instance of IO class coresponds to one specific directory.
+    If you want to load or to save from another directory, you need to create a new instance
+    """
+    def __init__(self,models_dir):
+        if models_dir is None:
+            raise ValueError("Directory of models must be given!")
+
+        self.models_dir=Path(models_dir)
+        os.makedirs(self.models_dir,exist_ok=True)
+
+    def __gen_filename(self,name,suffix):
+        parts=[name]
+        if suffix:
+            parts.append(suffix)
+
+        return self.models_dir/f"{'_'.join(parts)}.pkl"
+    
+    # method that saves a model adding a suffix suf to its name
+    def save(self,model,name,suf=''):
+        joblib.dump(model,self.__gen_filename(name,suffix=suf))
+
+    # method
+    def load(self,name,suf=''):
+        return joblib.load(self.__gen_filename(name,suffix=suf))
 
 class EarlyStopping:
     def __init__(self, patience):
@@ -512,3 +541,46 @@ def replace_column(df:pd.DataFrame,to_be_replaced,to_be_added):
         data_df.rename(columns={to_be_replaced:to_be_added},inplace=True)
     
     return data_df
+
+def tune_winner(winner):
+    estimators = {
+        'LogisticRegression': LogisticRegression,
+        'GaussianNB': GaussianNB,
+        'LDA': LinearDiscriminantAnalysis,
+        'SVM': SVC,
+        'RandomForest': RandomForestClassifier,
+        'LightGBM': lgb.LGBMClassifier
+    }
+
+    param_spaces = {
+        'LogisticRegression': lambda trial: {
+            'penalty': trial.suggest_categorical('penalty', ['l1', 'l2', 'elasticnet']),
+            'solver': trial.suggest_categorical('solver', ['saga']),
+            'C': trial.suggest_float('C', 1e-3, 1e0, log=True),
+            'l1_ratio': trial.suggest_uniform('l1_ratio', 0, 1)
+        },
+        'GaussianNB': lambda trial: {'var_smoothing': trial.suggest_float('var_smoothing', 1e-2, 1e-1, log=True)},
+        'LDA': lambda trial: {'solver':trial.suggest_categorical('solver', ['svd', 'lsqr', 'eigen']),
+                              'tol':trial.suggest_float('tol', 5*1e-2, 1e-1, log=True)},
+        'SVM': lambda trial: {
+            'C': trial.suggest_float('C', 5*1e-2, 1e2, log=True),
+            'kernel': trial.suggest_categorical('kernel', ['linear', 'rbf', 'poly']),
+            'probability': trial.suggest_categorical('probability', [True])
+        },
+        'RandomForest': lambda trial: {
+            'n_estimators': trial.suggest_int('n_estimators', 100, 500),
+            'max_depth': trial.suggest_int('max_depth', 5, 15),
+            'min_samples_split': trial.suggest_int('min_samples_split', 2, 10)
+        },
+        'LightGBM': lambda trial: {
+            'n_estimators': trial.suggest_int('n_estimators', 100, 500),
+            'max_depth': trial.suggest_int('max_depth', 5, 15),
+            'learning_rate': trial.suggest_float('learning_rate', 1e-3, 1e-1, log=True),
+            'verbosity': trial.suggest_categorical('verbosity', [-1])
+        }
+    }
+
+    winner_estim=estimators[winner]
+    winner_param=param_spaces[winner]
+
+    pass
