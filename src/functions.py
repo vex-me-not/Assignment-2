@@ -633,33 +633,61 @@ def winner_tuning(df:pd.DataFrame,winner):
     return winner_estim(**winner_params)
 
 
-def metric_ci(y_true, y_pred, metric, is_proba=False, proba=None, n_samples=5000, seed=42):
+# def metric_ci(y_true, y_pred, metric, is_proba=False, proba=None, n_samples=5000, seed=42):
     
-    rng = np.random.RandomState(seed)
-    stats = []
+#     rng = np.random.RandomState(seed)
+#     stats = []
     
-    for sample in range(n_samples):
+#     for sample in range(n_samples):
         
-        idx = rng.choice(len(y_true), len(y_true), replace=True)
+#         idx = rng.choice(len(y_true), len(y_true), replace=True)
         
-        y_sample = y_true[idx] if isinstance(y_true, np.ndarray) else y_true.iloc[idx]
-        pred_sample = proba[idx] if is_proba else y_pred[idx]
+#         y_sample = y_true[idx] if isinstance(y_true, np.ndarray) else y_true.iloc[idx]
+#         pred_sample = proba[idx] if is_proba else y_pred[idx]
         
-        stats.append(metric(y_sample, pred_sample))
+#         stats.append(metric(y_sample, pred_sample))
     
-    return np.percentile(stats, [2.5, 97.5])
+#     return np.percentile(stats, [2.5, 97.5])
 
+
+def metric_ci(y_true, y_pred, proba, n_samples=1000, seed=42):
+    rng = np.random.RandomState(seed)
+    metrics = {
+        'Balanced Accuracy': [],
+        'F1 Score': [],
+        'Precision': [],
+        'Recall': [],
+        'MCC': [],
+        'ROC AUC': [],
+        'PR AUC': []
+    }
+
+    for _ in range(n_samples):
+        idx = rng.choice(len(y_true), len(y_true), replace=True)
+        y_bs = y_true[idx] if isinstance(y_true, np.ndarray) else y_true.iloc[idx]
+        y_pred_bs = y_pred[idx]
+        y_proba_bs = proba[idx]
+
+        metrics['Balanced Accuracy'].append(balanced_accuracy_score(y_bs, y_pred_bs))
+        metrics['F1 Score'].append(f1_score(y_bs, y_pred_bs))
+        metrics['Precision'].append(precision_score(y_bs, y_pred_bs))
+        metrics['Recall'].append(recall_score(y_bs, y_pred_bs))
+        metrics['MCC'].append(matthews_corrcoef(y_bs, y_pred_bs))
+        metrics['ROC AUC'].append(roc_auc_score(y_bs, y_proba_bs))
+        metrics['PR AUC'].append(average_precision_score(y_bs, y_proba_bs))
+
+    return metrics
 
 def bootstrap_model(df_dev:pd.DataFrame,df_val:pd.DataFrame, model):
-    metrics = {
-        'Balanced Accuracy': (balanced_accuracy_score, False),
-        'F1 Score': (f1_score, False),
-        'Precision': (precision_score, False),
-        'Recall': (recall_score, False),
-        'MCC': (matthews_corrcoef, False),
-        'ROC AUC': (roc_auc_score, True),
-        'PR AUC': (average_precision_score, True)
-    }
+    # metrics = {
+    #     'Balanced Accuracy': (balanced_accuracy_score, False),
+    #     'F1 Score': (f1_score, False),
+    #     'Precision': (precision_score, False),
+    #     'Recall': (recall_score, False),
+    #     'MCC': (matthews_corrcoef, False),
+    #     'ROC AUC': (roc_auc_score, True),
+    #     'PR AUC': (average_precision_score, True)
+    # }
 
 
     x_dev, y_dev=keep_features(data_df=df_dev,target='diagnosis',to_drop=None)
@@ -682,16 +710,36 @@ def bootstrap_model(df_dev:pd.DataFrame,df_val:pd.DataFrame, model):
     y_proba = model.predict_proba(x_val)[:, 1]
 
 
-    print("Bootstrapped 95% CIs (Model trained on dev, tested on val):")
-    for name, (fn, is_proba) in metrics.items():
-        ci = metric_ci(
-            y_val,
-            y_pred if not is_proba else y_proba,
-            fn,
-            is_proba=is_proba,
-            proba=y_proba if is_proba else None
-        )
-        print(f"{name:15s}: [{ci[0]:.4f}, {ci[1]:.4f}]")
+    # print("Bootstrapped 95% CIs (Model trained on dev, tested on val):")
+    # for name, (fn, is_proba) in metrics.items():
+    #     ci = metric_ci(
+    #         y_val,
+    #         y_pred if not is_proba else y_proba,
+    #         fn,
+    #         is_proba=is_proba,
+    #         proba=y_proba if is_proba else None
+    #     )
+    #     print(f"{name:15s}: [{ci[0]:.4f}, {ci[1]:.4f}]")
+
+
+    # Run bootstrapping
+    bootstrap_scores = metric_ci(y_val, y_pred, y_proba, n_samples=1000)
+
+    # Visualize with violin plot
+    df_bootstrap = pd.DataFrame({
+        'Metric': sum([[metric]*len(scores) for metric, scores in bootstrap_scores.items()], []),
+        'Score': sum(bootstrap_scores.values(), [])
+    })
+
+    # Plot
+    plt.figure(figsize=(10, 6))
+    sns.violinplot(data=df_bootstrap, x='Metric', y='Score', inner='quartile', palette='pastel')
+    plt.title("Bootstrapped 95% CI Distributions (val set)")
+    plt.ylabel("Score")
+    plt.xticks(rotation=45)
+    plt.grid(True, axis='y', linestyle='--', alpha=0.5)
+    plt.tight_layout()
+    plt.show()
 
     # specificity and NPV as point estimates (not bootstrapped here)
     tn, fp, fn_, tp = confusion_matrix(y_val, y_pred).ravel()
