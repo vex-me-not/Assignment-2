@@ -827,16 +827,14 @@ def infere_with_winner(test_df_path):
 
     test_df=pd.read_csv(test_df_path)
 
-    x, y =keep_features(data_df=test_df)
-
-    x=impute(x)
-    x=scale_data(x)
-
-    y=encode(y)
-
     models_dir="../models"
     model_io=IO(models_dir)
 
-    model=model_io.load(name='winner')
+    winner=model_io.load(name='winner')
 
-    model
+    preds=winner.predict(test_df)
+    
+    test_df["predicted_diagnosis"] = preds
+    print(test_df[["predicted_diagnosis"]].head())
+
+    test_df.to_csv('../data/predictions.csv',index=False)
