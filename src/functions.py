@@ -10,6 +10,7 @@ import lightgbm as lgb
 import warnings
 
 from pathlib import Path
+from sklearn.base import BaseEstimator, TransformerMixin
 from optuna.pruners import MedianPruner
 from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import GaussianNB
@@ -66,7 +67,7 @@ class EarlyStopping:
     def __call__(self, study: optuna.Study, trial: optuna.Trial):
         if (self.best is None) or (study.best_value > self.best):
             self.best = study.best_value
-            self.no_impr_count = 0
+            self.no_impr_count=0
         else:
             self.no_impr_count += 1
 
@@ -75,7 +76,15 @@ class EarlyStopping:
             study.stop()
             print(f"--> Best trial is {study.best_trial.number} with value: {study.best_trial.value} and parameters: {study.best_trial.params}\n")
 
+class ColumnSelector(BaseEstimator, TransformerMixin):
+    def __init__(self, columns):
+        self.columns=columns
 
+    def fit(self, x, y=None):
+        return self
+
+    def transform(self, x):
+        return x[self.columns]
 
 class rnCV():
     def __init__(self,data_df,estimators,params,r=10,n=5,k=3,random_state=42):
@@ -90,9 +99,9 @@ class rnCV():
         self.results={estim:[] for estim in estimators.keys()}
 
     def _compute_metrics(self,y_true,y_pred,y_prob):
-        tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
-        specificity = tn / (tn + fp)
-        npv = tn / (tn + fn)
+        tn, fp, fn, tp=confusion_matrix(y_true, y_pred).ravel()
+        specificity=tn / (tn + fp)
+        npv=tn / (tn + fn)
 
         metrics={
             'MCC': matthews_corrcoef(y_true, y_pred),
@@ -112,8 +121,8 @@ class rnCV():
         summary = {}
         
         for model_name, all_metrics in self.results.items():
-            df = pd.DataFrame(all_metrics)
-            summary[model_name] = df.median().to_dict()
+            df=pd.DataFrame(all_metrics)
+            summary[model_name]=df.median().to_dict()
     
         summary_t=pd.DataFrame(summary).T
         
@@ -127,7 +136,7 @@ class rnCV():
             model=estimator(**params)
 
             strat_kfold=StratifiedKFold(n_splits=self.K, shuffle=True, random_state=self.random_state)
-            scores = []
+            scores=[]
 
             for fold_idx, (k_train_idx, k_val_idx) in enumerate(strat_kfold.split(x_train, y_train)):
                 x_k_train, x_val = x_train.iloc[k_train_idx], x_train.iloc[k_val_idx]
@@ -140,7 +149,7 @@ class rnCV():
                 x_val=scale_data(x_val)
 
                 model.fit(x_k_train, y_k_train)
-                preds = model.predict(x_val)
+                preds=model.predict(x_val)
                 score=balanced_accuracy_score(y_val, preds)
                 scores.append(score)
 
@@ -154,7 +163,7 @@ class rnCV():
             return np.mean(scores)        
         
 
-        study = optuna.create_study(direction='maximize',study_name=model_name)
+        study=optuna.create_study(direction='maximize',study_name=model_name)
         study.optimize(objective, n_trials=60,timeout=180.0,callbacks=[EarlyStopping(patience=10)])
         
         return study.best_params        
@@ -170,13 +179,13 @@ class rnCV():
 
             for model_name in self.estimators.keys():
                 for n_train_idx, n_test_idx in strat_kfold.split(self.x, self.y):
-                    x_n_train, x_n_test = self.x.iloc[n_train_idx], self.x.iloc[n_test_idx]
-                    y_n_train, y_n_test = self.y.iloc[n_train_idx], self.y.iloc[n_test_idx]
+                    x_n_train, x_n_test=self.x.iloc[n_train_idx], self.x.iloc[n_test_idx]
+                    y_n_train, y_n_test=self.y.iloc[n_train_idx], self.y.iloc[n_test_idx]
 
 
-                    best_params = self._tune_model(x_train=x_n_train,y_train= y_n_train,model_name=model_name)
+                    best_params=self._tune_model(x_train=x_n_train,y_train= y_n_train,model_name=model_name)
 
-                    model = self.estimators[model_name](**best_params)
+                    model=self.estimators[model_name](**best_params)
 
                     x_n_train=impute(x_n_train)
                     x_n_train=scale_data(x_n_train)
@@ -186,10 +195,10 @@ class rnCV():
                     
                     model.fit(x_n_train, y_n_train)
 
-                    preds = model.predict(x_n_test)
-                    pred_probs = model.predict_proba(x_n_test)[:, 1]
+                    preds=model.predict(x_n_test)
+                    pred_probs=model.predict_proba(x_n_test)[:, 1]
 
-                    metrics = self._compute_metrics(y_true=y_n_test,y_pred=preds,y_prob=pred_probs)
+                    metrics=self._compute_metrics(y_true=y_n_test,y_pred=preds,y_prob=pred_probs)
                     self.results[model_name].append(metrics)
 
         return self.results
@@ -203,14 +212,14 @@ class rnCV():
             model=estimator(**params)
 
             strat_kfold=StratifiedKFold(n_splits=5, shuffle=True, random_state=self.random_state)
-            scores = []
+            scores=[]
 
             x_tune=self.x
             y_tune=self.y
             
             for fold_idx, (tune_train_idx, tune_val_idx) in enumerate(strat_kfold.split(x_tune, y_tune)):
-                x_tune_train, x_tune_val = x_tune.iloc[tune_train_idx], x_tune.iloc[tune_val_idx]
-                y_tune_train, y_tune_val = y_tune.iloc[tune_train_idx], y_tune.iloc[tune_val_idx]
+                x_tune_train, x_tune_val= x_tune.iloc[tune_train_idx], x_tune.iloc[tune_val_idx]
+                y_tune_train, y_tune_val= y_tune.iloc[tune_train_idx], y_tune.iloc[tune_val_idx]
                     
                 x_tune_train=impute(x_tune_train)
                 x_tune_train=scale_data(x_tune_train)
@@ -219,7 +228,7 @@ class rnCV():
                 x_tune_val=scale_data(x_tune_val)
 
                 model.fit(x_tune_train, y_tune_train)
-                preds = model.predict(x_tune_val)
+                preds=model.predict(x_tune_val)
                 score=balanced_accuracy_score(y_tune_val, preds)
                 scores.append(score)
 
@@ -233,7 +242,7 @@ class rnCV():
             return np.mean(scores)        
             
 
-        study = optuna.create_study(direction='maximize',study_name="Winner:"+winner)
+        study=optuna.create_study(direction='maximize',study_name="Winner:"+winner)
         study.optimize(objective, n_trials=60,timeout=180.0,callbacks=[EarlyStopping(patience=10)])
             
         return study.best_params
@@ -282,11 +291,11 @@ def perform_rnCV(path):
     }
 
     # Initialize and run rnCV
-    rncv = rnCV(data_df=df, estimators=estimators,params=param_spaces, r=10, n=5, k=3, random_state=42)
-    results = rncv.run_rnCV()
+    rncv=rnCV(data_df=df, estimators=estimators,params=param_spaces, r=10, n=5, k=3, random_state=42)
+    results=rncv.run_rnCV()
 
     # Summarize and save the results
-    summary = rncv.results_summary()
+    summary=rncv.results_summary()
     summary.to_csv('../data/rncv_summary_results.csv')
 
     print("Summary:\n", summary)
@@ -298,7 +307,7 @@ def clean_data(data:pd.DataFrame):
     nan_columns=df.columns[df.isna().any()].tolist()
     total_nan=(df.isna().sum()).sum()
 
-    df_numeric = df.select_dtypes(include=[float, int])
+    df_numeric=df.select_dtypes(include=[float, int])
     df_numeric=df_numeric.drop(columns=['id'])
 
     print(f'Our data consists of {df.shape[1]} columns and {df.shape[0]} entries')
@@ -327,13 +336,13 @@ def general_info(data_df: pd.DataFrame):
 def impute(data_df: pd.DataFrame):
     df=data_df
 
-    df_numeric = df.select_dtypes(include=[float, int])
+    df_numeric=df.select_dtypes(include=[float, int])
     
     if 'id' in df_numeric.columns:
         df_numeric=df_numeric.drop(columns=['id'])
 
-    imp = IterativeImputer(random_state=42)
-    df[df_numeric.columns] = imp.fit_transform(df_numeric)
+    imp=IterativeImputer(random_state=42)
+    df[df_numeric.columns]=imp.fit_transform(df_numeric)
 
     return df
 
@@ -446,7 +455,7 @@ def corr_between_features(data_df: pd.DataFrame,target='diagnosis',to_drop=['dia
 
     viz_corr_between_features(corr_matrix=corr_matrix)
     
-    corr_pairs= corr_matrix.abs().where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool)).stack().sort_values(ascending=False)
+    corr_pairs=corr_matrix.abs().where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool)).stack().sort_values(ascending=False)
 
     high_pairs=corr_pairs[corr_pairs>=thres]
     print('Pairs of high correlation')
@@ -506,9 +515,9 @@ def perform_pca(data_df: pd.DataFrame):
 
     fraction=0.95
 
-    pca = PCA(n_components = fraction)
+    pca = PCA(n_components=fraction)
     pca.fit(data_rescaled)
-    reduced = pca.transform(data_rescaled)
+    reduced=pca.transform(data_rescaled)
 
     print(f"{fraction*100}% of the variance can be explained by {pca.n_components_} components")
     print("The explained variance ratio is: ",(pca.explained_variance_ratio_))
@@ -525,7 +534,8 @@ def scale_data(data):
     ('scaler', RobustScaler()),  
     ('transformer', PowerTransformer(method='yeo-johnson'))
     ])
-    data_rescaled = pipeline.fit_transform(data)
+    
+    data_rescaled=pipeline.fit_transform(data)
 
     return data_rescaled
 
@@ -624,7 +634,7 @@ def winner_tuning(df:pd.DataFrame,winner):
         }
     }
 
-    rncv = rnCV(data_df=df, estimators=estimators,params=param_spaces, r=10, n=5, k=3, random_state=42)
+    rncv=rnCV(data_df=df, estimators=estimators,params=param_spaces, r=10, n=5, k=3, random_state=42)
     winner_estim=estimators[winner]
     winner_params=rncv.tune_winner(winner=winner)
 
@@ -635,15 +645,15 @@ def winner_tuning(df:pd.DataFrame,winner):
 
 def metric_ci(y_true, y_pred, metric, is_proba=False, proba=None, n_samples=5000, seed=42):
     
-    rng = np.random.RandomState(seed)
-    stats = []
+    rng=np.random.RandomState(seed)
+    stats=[]
     
     for sample in range(n_samples):
         
-        idx = rng.choice(len(y_true), len(y_true), replace=True)
+        idx=rng.choice(len(y_true), len(y_true), replace=True)
         
-        y_sample = y_true[idx] if isinstance(y_true, np.ndarray) else y_true.iloc[idx]
-        pred_sample = proba[idx] if is_proba else y_pred[idx]
+        y_sample=y_true[idx] if isinstance(y_true, np.ndarray) else y_true.iloc[idx]
+        pred_sample=proba[idx] if is_proba else y_pred[idx]
         
         stats.append(metric(y_sample, pred_sample))
     
@@ -663,14 +673,14 @@ def bootstrap_model_intervals(df_dev:pd.DataFrame,df_val:pd.DataFrame, model):
 
 
     x_dev, y_dev=keep_features(data_df=df_dev,target='diagnosis',to_drop=None)
-    y_dev = encode(y_dev)
+    y_dev=encode(y_dev)
 
 
     x_dev=impute(x_dev)
     x_dev=scale_data(x_dev)
     
     x_val, y_val=keep_features(data_df=df_val,target='diagnosis',to_drop=None)
-    y_val = encode(y_val)
+    y_val=encode(y_val)
 
     x_val=impute(x_val)
     x_val=scale_data(x_val)
@@ -678,13 +688,13 @@ def bootstrap_model_intervals(df_dev:pd.DataFrame,df_val:pd.DataFrame, model):
     model.fit(x_dev,y_dev)
 
     # predict on evaluation set
-    y_pred = model.predict(x_val)
-    y_proba = model.predict_proba(x_val)[:, 1]
+    y_pred=model.predict(x_val)
+    y_proba=model.predict_proba(x_val)[:, 1]
 
 
     print("Bootstrapped 95% CIs (Model trained on dev, tested on val):")
     for name, (fn, is_proba) in metrics.items():
-        ci = metric_ci(
+        ci=metric_ci(
             y_val,
             y_pred if not is_proba else y_proba,
             fn,
@@ -694,10 +704,10 @@ def bootstrap_model_intervals(df_dev:pd.DataFrame,df_val:pd.DataFrame, model):
         print(f"{name:15s}: [{ci[0]:.4f}, {ci[1]:.4f}]")
 
     # specificity and NPV as point estimates (not bootstrapped here)
-    tn, fp, fn_, tp = confusion_matrix(y_val, y_pred).ravel()
+    tn, fp, fn_, tp=confusion_matrix(y_val, y_pred).ravel()
     
-    specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
-    npv = tn / (tn + fn_) if (tn + fn_) > 0 else 0
+    specificity=tn / (tn + fp) if (tn + fp) > 0 else 0
+    npv=tn / (tn + fn_) if (tn + fn_) > 0 else 0
     
     print(f"Specificity         : {specificity:.4f}")
     print(f"NPV                 : {npv:.4f}")
@@ -716,10 +726,10 @@ def metric_ci_plot(y_true, y_pred, proba, n_samples=1000, seed=42):
     }
 
     for _ in range(n_samples):
-        idx = rng.choice(len(y_true), len(y_true), replace=True)
-        y_bs = y_true[idx] if isinstance(y_true, np.ndarray) else y_true.iloc[idx]
-        y_pred_bs = y_pred[idx]
-        y_proba_bs = proba[idx]
+        idx=rng.choice(len(y_true), len(y_true), replace=True)
+        y_bs=y_true[idx] if isinstance(y_true, np.ndarray) else y_true.iloc[idx]
+        y_pred_bs=y_pred[idx]
+        y_proba_bs=proba[idx]
 
         metrics['Balanced Accuracy'].append(balanced_accuracy_score(y_bs, y_pred_bs))
         metrics['F1 Score'].append(f1_score(y_bs, y_pred_bs))
@@ -734,14 +744,14 @@ def metric_ci_plot(y_true, y_pred, proba, n_samples=1000, seed=42):
 def bootstrap_model_plot(df_dev:pd.DataFrame,df_val:pd.DataFrame, model):
 
     x_dev, y_dev=keep_features(data_df=df_dev,target='diagnosis',to_drop=None)
-    y_dev = encode(y_dev)
+    y_dev=encode(y_dev)
 
 
     x_dev=impute(x_dev)
     x_dev=scale_data(x_dev)
     
     x_val, y_val=keep_features(data_df=df_val,target='diagnosis',to_drop=None)
-    y_val = encode(y_val)
+    y_val=encode(y_val)
 
     x_val=impute(x_val)
     x_val=scale_data(x_val)
@@ -749,11 +759,11 @@ def bootstrap_model_plot(df_dev:pd.DataFrame,df_val:pd.DataFrame, model):
     model.fit(x_dev,y_dev)
 
     # predict on evaluation set
-    y_pred = model.predict(x_val)
-    y_proba = model.predict_proba(x_val)[:, 1]
+    y_pred=model.predict(x_val)
+    y_proba=model.predict_proba(x_val)[:, 1]
 
     # Run bootstrapping
-    bootstrap_scores = metric_ci_plot(y_val, y_pred, y_proba, n_samples=5000)
+    bootstrap_scores=metric_ci_plot(y_val, y_pred, y_proba, n_samples=5000)
 
     # Visualize with violin plot
     df_bootstrap = pd.DataFrame({
@@ -775,10 +785,58 @@ def bootstrap_model(df_dev:pd.DataFrame,df_val:pd.DataFrame, model):
     bootstrap_model_intervals(df_dev=df_dev,df_val=df_val,model=model)
     bootstrap_model_plot(df_dev=df_dev,df_val=df_val,model=model)
 
-def save_winner(winner,winner_name):
+def save_winner(path,winner,winner_name):
     models_dir="../models"
     model_io=IO(models_dir)
 
-    print(f"Saving winner model with name {winner_name}")
+    df=pd.read_csv(path)
 
-    model_io.save(model=winner,name=winner_name)
+    x_full,y_full=keep_features(data_df=df)
+    y_full=encode(y_full)
+
+    x_full=df.drop(columns="diagnosis")
+
+    feature_columns=x_full.columns.tolist()
+
+    joblib.dump(feature_columns, "../models/feature_columns.pkl")
+
+    scale_pipeline=Pipeline([
+    ('scaler', RobustScaler()),  
+    ('transformer', PowerTransformer(method='yeo-johnson'))
+    ])
+
+    preprocessor=Pipeline([
+        ('imputer', IterativeImputer(random_state=42)),  
+        ('scaler', scale_pipeline)                    
+    ])
+
+    winner_pipeline=Pipeline([
+        ('select_columns',ColumnSelector(columns=feature_columns)),
+        ('preproccesing',preprocessor),
+        ('model',winner)
+    ])
+
+    winner_pipeline.fit(X=x_full,y=y_full)
+    
+    print(f"Saving winner model ({winner_name}) with name winner.pkl")
+
+    model_io.save(model=winner_pipeline,name='winner')
+
+
+def infere_with_winner(test_df_path):
+
+    test_df=pd.read_csv(test_df_path)
+
+    x, y =keep_features(data_df=test_df)
+
+    x=impute(x)
+    x=scale_data(x)
+
+    y=encode(y)
+
+    models_dir="../models"
+    model_io=IO(models_dir)
+
+    model=model_io.load(name='winner')
+
+    model
