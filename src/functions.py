@@ -775,7 +775,10 @@ def bootstrap_model(df_dev:pd.DataFrame,df_val:pd.DataFrame, model):
     bootstrap_model_intervals(df_dev=df_dev,df_val=df_val,model=model)
     bootstrap_model_plot(df_dev=df_dev,df_val=df_val,model=model)
 
-def save_winner(winner):
+def save_winner(winner,winner_name):
     models_dir="../models"
-
     model_io=IO(models_dir)
+
+    print(f"Saving winner model with name {winner_name}")
+
+    model_io.save(model=winner,name=winner_name)
