@@ -985,3 +985,42 @@ def infere_with_winner(test_df_path):
     print(test_df[["predicted_diagnosis"]].head())
 
     test_df.to_csv('../data/predictions.csv',index=False)
+
+# method used to get the best top coefficients of Logistic Regression. Returns a dataframe
+def get_top_coefficients(top,names):
+
+    # the directory where the winner lies
+    models_dir="../models"
+    model_io=IO(models_dir) # this class will handle the loading
+
+    winner=model_io.load(name='winner') # we load the model
+
+    cf=(winner.named_steps['model'].coef_).flatten() # the coefficients of the model
+    features=names # the name of the features
+
+    # the dataframe to be returned, sorted in descending absolute coefficient value
+    cf_df=pd.DataFrame({
+        'Feature':features,
+        'Coefficient':cf,
+        'abs_coeff': np.abs(cf)
+    }).sort_values(by='abs_coeff',ascending=False)
+
+    print(cf_df.head(top))
+
+    return cf_df
+
+# method used to plot the best top coefficients of LogisticRegression. Needs a dataframe as input
+def plot_best_coefficients(cf_df:pd.DataFrame,top):
+    plt.figure(figsize=(10,6))
+
+    sns.barplot(data=cf_df.head(top),y='Feature',x='Coefficient',palette='magma')
+    
+    plt.axvline(0, color='black', linestyle='--')
+    plt.title(f'Top {top} most influential features (LogisticRegression Coefficients)')
+    
+    plt.tight_layout()
+    plt.show()
+
+def top_coefficients_winner(top,names):
+    cf_df=get_top_coefficients(top=top,names=names)
+    plot_best_coefficients(cf_df=cf_df,top=top)
