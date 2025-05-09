@@ -1021,6 +1021,7 @@ def plot_best_coefficients(cf_df:pd.DataFrame,top):
     plt.tight_layout()
     plt.show()
 
+# method used to get the most top influentiel coefficients of a Logistic Regression model and plot them
 def top_coefficients_winner(top,names):
     cf_df=get_top_coefficients(top=top,names=names)
     plot_best_coefficients(cf_df=cf_df,top=top)
